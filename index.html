@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimizer Visualizer</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6a6a8a;
+    --sgd: #e85d5d;
+    --mom: #5b9cf6;
+    --rms: #3ecf8e;
+    --adam: #f5a623;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  header {
+    width: 100%;
+    padding: 3rem 2rem 2rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 80% at 50% -20%, rgba(91,156,246,0.12), transparent);
+    pointer-events: none;
+  }
+
+  .header-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, #9ba8d0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.75rem;
+  }
+
+  .subtitle {
+    font-size: 0.95rem;
+    color: var(--muted);
+    max-width: 480px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  main {
+    width: 100%;
+    max-width: 900px;
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  select {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    outline: none;
+  }
+  select:focus { border-color: #5b9cf6; }
+
+  .btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  .btn:hover { border-color: #5b9cf6; color: #5b9cf6; }
+  .btn.primary { background: #5b9cf6; border-color: #5b9cf6; color: #000; font-weight: 700; }
+  .btn.primary:hover { background: #7ab4ff; border-color: #7ab4ff; }
+
+  .step-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  .toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .toggle.on { background: rgba(255,255,255,0.05); color: var(--text); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  #canvas {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: block;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .stat {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+  }
+
+  .stat-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .stat-loss {
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+
+  .stat-steps {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .legend {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+
+  .legend-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    margin-bottom: 3px;
+  }
+
+  .legend-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  footer {
+    padding: 2rem;
+    text-align: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    width: 100%;
+  }
+
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .legend { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="header-tag">Gradient Descent · Visualization</p>
+  <h1>Optimizer<br>Visualizer</h1>
+  <p class="subtitle">경사하강법 기반 최적화 알고리즘들의 동작을 loss landscape 위에서 실시간으로 비교합니다.</p>
+</header>
+
+<main>
+  <div class="card">
+    <div class="controls" style="margin-bottom:12px">
+      <select id="funcSel">
+        <option value="rosenbrock">Rosenbrock (바나나 함수)</option>
+        <option value="beale">Beale</option>
+        <option value="himmelblau">Himmelblau</option>
+      </select>
+      <button class="btn primary" id="playBtn">▶ 시작</button>
+      <button class="btn" id="stepBtn">+1 step</button>
+      <button class="btn" id="resetBtn">↺ 리셋</button>
+      <span class="step-label" id="stepLbl">step: 0 / 400</span>
+    </div>
+    <div class="toggles" id="toggleRow" style="margin-bottom:12px"></div>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="card">
+    <p class="section-label">현재 Loss 값</p>
+    <div class="stats" id="statRow"></div>
+  </div>
+
+  <div class="card">
+    <p class="section-label">알고리즘 설명</p>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--sgd)"></div>
+        <div>
+          <div class="legend-title" style="color:var(--sgd)">SGD</div>
+          <div class="legend-desc">Stochastic Gradient Descent. 가장 단순한 방법. 그래디언트 방향으로 고정 보폭으로 이동. 느리고 진동 심함.</div>
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--mom)"></div>
+        <div>
+          <div class="legend-title" style="color:var(--mom)">Momentum</div>
+          <div class="legend-desc">이전 이동 방향에 관성(0.9)을 부여. 좁은 골짜기에서 빠르지만 최솟값 근처에서 overshooting 발생.</div>
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--rms)"></div>
+        <div>
+          <div class="legend-title" style="color:var(--rms)">RMSProp</div>
+          <div class="legend-desc">축 방향별로 학습률을 개별 조정. 자주 업데이트된 축은 학습률 감소. 방향 불균형에 강인함.</div>
+        </div>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot" style="background:var(--adam)"></div>
+        <div>
+          <div class="legend-title" style="color:var(--adam)">Adam</div>
+          <div class="legend-desc">Momentum + RMSProp 결합. 1차/2차 모멘트 모두 추정. 대부분의 실전 딥러닝에서 기본 선택.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Built with vanilla JS · MLCAD 2026 Contest Prep
+</footer>
+
+<script>
+const OPTS = [
+  { name:'SGD',      color:'#e85d5d', cssVar:'--sgd', active:true },
+  { name:'Momentum', color:'#5b9cf6', cssVar:'--mom', active:true },
+  { name:'RMSProp',  color:'#3ecf8e', cssVar:'--rms', active:true },
+  { name:'Adam',     color:'#f5a623', cssVar:'--adam',active:true },
+];
+
+const FUNCS = {
+  rosenbrock: {
+    f:(x,y)=>(1-x)**2+100*(y-x*x)**2,
+    start:[-1.5,1.0], min:[1,1], range:[-2,2,-0.5,3], logScale:true
+  },
+  beale: {
+    f:(x,y)=>(1.5-x+x*y)**2+(2.25-x+x*y*y)**2+(2.625-x+x*y**3)**2,
+    start:[0,0], min:[3,0.5], range:[-4.5,4.5,-4.5,4.5], logScale:true
+  },
+  himmelblau: {
+    f:(x,y)=>(x*x+y-11)**2+(x+y*y-7)**2,
+    start:[-2,2], min:[3,2], range:[-5,5,-5,5], logScale:false
+  }
+};
+
+const LR = { SGD:0.001, Momentum:0.002, RMSProp:0.01, Adam:0.01 };
+const EPS = 1e-8;
+const MAXSTEP = 400;
+
+class Optimizer {
+  constructor(name, x0, y0) {
+    this.name=name; this.x=x0; this.y=y0;
+    this.vx=0; this.vy=0; this.sx=0; this.sy=0;
+    this.mx=0; this.my=0; this.t=0;
+    this.path=[[x0,y0]];
+  }
+  grad(f,x,y){ let h=1e-5; return [(f(x+h,y)-f(x-h,y))/(2*h),(f(x,y+h)-f(x,y-h))/(2*h)]; }
+  step(f){
+    let [gx,gy]=this.grad(f,this.x,this.y), lr=LR[this.name], dx, dy;
+    if(this.name==='SGD'){
+      dx=lr*gx; dy=lr*gy;
+    } else if(this.name==='Momentum'){
+      this.vx=0.9*this.vx+lr*gx; this.vy=0.9*this.vy+lr*gy; dx=this.vx; dy=this.vy;
+    } else if(this.name==='RMSProp'){
+      this.sx=0.9*this.sx+0.1*gx*gx; this.sy=0.9*this.sy+0.1*gy*gy;
+      dx=lr*gx/(Math.sqrt(this.sx)+EPS); dy=lr*gy/(Math.sqrt(this.sy)+EPS);
+    } else {
+      this.t++;
+      this.mx=0.9*this.mx+0.1*gx; this.my=0.9*this.my+0.1*gy;
+      this.sx=0.999*this.sx+0.001*gx*gx; this.sy=0.999*this.sy+0.001*gy*gy;
+      let b1=1-0.9**this.t, b2=1-0.999**this.t;
+      dx=lr*(this.mx/b1)/(Math.sqrt(this.sx/b2)+EPS);
+      dy=lr*(this.my/b1)/(Math.sqrt(this.sy/b2)+EPS);
+    }
+    this.x-=dx; this.y-=dy;
+    this.path.push([this.x,this.y]);
+  }
+}
+
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+let W,H,animId=null,step=0,running=false;
+let opts=[], curFunc=FUNCS.rosenbrock, contourCache=null;
+
+function initOpts(){
+  let {start}=curFunc;
+  opts=OPTS.map(o=>new Optimizer(o.name,start[0]+(Math.random()-0.5)*0.08,start[1]+(Math.random()-0.5)*0.08));
+}
+
+function toCanvas(x,y,[x0,x1,y0,y1]){
+  return [(x-x0)/(x1-x0)*W, H-(y-y0)/(y1-y0)*H];
+}
+
+function buildContour(){
+  let {f,range,logScale}=curFunc, [x0,x1,y0,y1]=range;
+  let img=ctx.createImageData(W,H);
+  let vals=new Float32Array(W*H), minV=Infinity, maxV=-Infinity;
+  for(let j=0;j<H;j++) for(let i=0;i<W;i++){
+    let x=x0+(x1-x0)*i/W, y=y0+(y1-y0)*(H-j)/H;
+    let v=f(x,y); vals[j*W+i]=v;
+    if(v<minV) minV=v; if(v>maxV) maxV=v;
+  }
+  let logMax=Math.log(1+maxV-minV);
+  for(let k=0;k<W*H;k++){
+    let v=vals[k], t;
+    if(logScale) t=Math.log(1+v-minV)/logMax;
+    else t=(v-minV)/(maxV-minV+1e-10);
+    t=Math.min(1,Math.max(0,t));
+    let r=Math.round(20+t*30), g=Math.round(20+t*25), b=Math.round(35+t*55);
+    img.data[k*4]=r; img.data[k*4+1]=g; img.data[k*4+2]=b; img.data[k*4+3]=255;
+  }
+  contourCache=img;
+}
+
+function drawScene(){
+  if(!contourCache) buildContour();
+  ctx.putImageData(contourCache,0,0);
+  let {range,min}=curFunc;
+
+  // grid lines
+  ctx.strokeStyle='rgba(255,255,255,0.04)';
+  ctx.lineWidth=1;
+  let [x0,x1,y0,y1]=range;
+  for(let xi=Math.ceil(x0);xi<=Math.floor(x1);xi++){
+    let [cx]=toCanvas(xi,0,range); let [,ty]=toCanvas(0,y1,range); let [,by]=toCanvas(0,y0,range);
+    ctx.beginPath(); ctx.moveTo(cx,ty); ctx.lineTo(cx,by); ctx.stroke();
+  }
+  for(let yi=Math.ceil(y0);yi<=Math.floor(y1);yi++){
+    let [lx,cy]=toCanvas(x0,yi,range); let [rx]=toCanvas(x1,yi,range);
+    ctx.beginPath(); ctx.moveTo(lx,cy); ctx.lineTo(rx,cy); ctx.stroke();
+  }
+
+  // minimum marker
+  let [mx,my]=toCanvas(min[0],min[1],range);
+  ctx.beginPath(); ctx.arc(mx,my,10,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(mx,my,4,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.font='bold 11px "Space Mono"';
+  ctx.fillText('min',mx+14,my+4);
+
+  OPTS.forEach((o,i)=>{
+    if(!o.active) return;
+    let p=opts[i].path;
+    if(p.length<2) return;
+    ctx.beginPath();
+    let [cx,cy]=toCanvas(p[0][0],p[0][1],range); ctx.moveTo(cx,cy);
+    for(let k=1;k<p.length;k++){
+      let [px,py]=toCanvas(p[k][0],p[k][1],range); ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle=o.color+'99'; ctx.lineWidth=2; ctx.stroke();
+    let [lx,ly]=toCanvas(p[p.length-1][0],p[p.length-1][1],range);
+    ctx.beginPath(); ctx.arc(lx,ly,6,0,Math.PI*2);
+    ctx.fillStyle=o.color; ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.font='bold 10px "Space Mono"';
+    ctx.fillText(o.name,lx+10,ly+4);
+  });
+}
+
+function updateStats(){
+  let row=document.getElementById('statRow'); row.innerHTML='';
+  OPTS.forEach((o,i)=>{
+    let lv=curFunc.f(opts[i].x,opts[i].y);
+    let str=lv<0.001?lv.toExponential(2):lv.toFixed(3);
+    let d=document.createElement('div'); d.className='stat';
+    d.innerHTML=`<div class="stat-name" style="color:${o.color}">${o.name}</div>
+      <div class="stat-loss" style="color:${o.active?'#e8e8f0':'#3a3a4a'}">${o.active?str:'—'}</div>
+      <div class="stat-steps">${opts[i].path.length-1} steps</div>`;
+    row.appendChild(d);
+  });
+}
+
+function resize(){
+  let rect=canvas.getBoundingClientRect();
+  W=Math.round(rect.width); H=Math.round(W*0.62);
+  canvas.width=W; canvas.height=H;
+  contourCache=null; drawScene(); updateStats();
+}
+
+function doStep(){
+  if(step>=MAXSTEP){ stop(); return; }
+  OPTS.forEach((o,i)=>{ if(o.active) opts[i].step(curFunc.f); });
+  step++;
+  document.getElementById('stepLbl').textContent=`step: ${step} / ${MAXSTEP}`;
+  drawScene(); updateStats();
+}
+
+function start(){
+  if(running) return; running=true;
+  document.getElementById('playBtn').textContent='⏸ 일시정지';
+  document.getElementById('playBtn').classList.remove('primary');
+  tick();
+}
+function stop(){
+  running=false; cancelAnimationFrame(animId);
+  document.getElementById('playBtn').textContent='▶ 시작';
+  document.getElementById('playBtn').classList.add('primary');
+}
+function tick(){ if(!running) return; doStep(); animId=setTimeout(()=>requestAnimationFrame(tick),25); }
+
+function reset(){
+  stop(); step=0;
+  document.getElementById('stepLbl').textContent=`step: 0 / ${MAXSTEP}`;
+  contourCache=null; initOpts(); drawScene(); updateStats();
+}
+
+function buildToggles(){
+  let row=document.getElementById('toggleRow'); row.innerHTML='';
+  OPTS.forEach((o,i)=>{
+    let b=document.createElement('button'); b.className='toggle'+(o.active?' on':'');
+    b.innerHTML=`<span class="dot" style="background:${o.color}"></span>${o.name}`;
+    b.onclick=()=>{ o.active=!o.active; b.className='toggle'+(o.active?' on':''); drawScene(); updateStats(); };
+    row.appendChild(b);
+  });
+}
+
+document.getElementById('playBtn').onclick=()=>running?stop():start();
+document.getElementById('stepBtn').onclick=doStep;
+document.getElementById('resetBtn').onclick=reset;
+document.getElementById('funcSel').onchange=e=>{ curFunc=FUNCS[e.target.value]; reset(); };
+
+buildToggles(); initOpts();
+new ResizeObserver(resize).observe(canvas);
+resize();
+</script>
+</body>
+</html>
